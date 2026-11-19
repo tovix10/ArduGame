@@ -11,21 +11,19 @@ namespace RunGame {
     bool isJumping;
     bool isDucking;
     int16_t obsX;
-    byte obsType; // 0 = Kaktus Kecil, 1 = Kaktus Ganda, 2 = Burung Terbang
+    byte obsType;
     byte cloudX[2];
     byte groundOffset;
     int score;
     byte lives;
-    byte level;
+    byte level; // 0 s/d 9 (10 Level)
     bool isGameOver;
     bool animFrame;
   };
 
-  // Pinjam memori WormGame::worm (0 byte RAM tambahan!)
   RunState* st = (RunState*)WormGame::worm;
   const byte groundY = 86;
 
-  // Pembaruan parsial Skor & Level (Tidak menghapus seluruh bar atas!)
   void updateScoreAndLevel() {
     tv.draw_rect(4, 2, 20, 7, 0, 0);
     drawDigit(5, 2, (st->score / 100) % 10);
@@ -51,7 +49,6 @@ namespace RunGame {
     updateLives();
   }
 
-  // Hanya menggambar Awan (Bulan & Bintang dipisah agar tidak berkedip!)
   void drawClouds(byte color) {
     for (byte i = 0; i < 2; i++) {
       byte cx = st->cloudX[i];
@@ -62,7 +59,6 @@ namespace RunGame {
     }
   }
 
-  // Ornamen Statis Bulan Sabit & Bintang Gurun Malam
   void drawStaticSky() {
     tv.draw_circle(108, 22, 4, 1);
     tv.set_pixel(106, 21, 1);
@@ -83,13 +79,11 @@ namespace RunGame {
   void drawTrex(int8_t y, bool duck, byte color) {
     byte x = 16;
     if (color == 0) {
-      // Tinggi hapus dikunci 9px (y-9 s/d y) agar TIDAK PERNAH menghapus garis tanah (groundY = 86)!
       tv.draw_rect(x - 1, y - 9, 12, 9, 0, 0);
       return;
     }
 
     if (!duck) {
-      // Pose Berdiri / Lompat
       tv.draw_rect(x + 4, y - 9, 4, 3, 1, 1);
       tv.set_pixel(x + 5, y - 8, 0);
       tv.draw_rect(x + 2, y - 5, 4, 3, 1, 1);
@@ -103,7 +97,6 @@ namespace RunGame {
         tv.draw_line(x + 5, y - 2, x + 5, y, 1);
       }
     } else {
-      // Pose Menunduk (Ducking)
       tv.draw_rect(x, y - 4, 7, 2, 1, 1);
       tv.draw_rect(x + 7, y - 5, 4, 3, 1, 1);
       tv.set_pixel(x + 8, y - 4, 0);
@@ -120,20 +113,17 @@ namespace RunGame {
     byte x = (byte)ox;
 
     if (type == 0) {
-      // Kaktus Kecil (Hapus hanya sampai groundY - 1 agar garis tanah tidak terputus)
       if (color == 0) { tv.draw_rect(x, groundY - 8, 5, 7, 0, 0); return; }
       tv.draw_line(x + 2, groundY - 7, x + 2, groundY - 1, 1);
       tv.draw_line(x, groundY - 5, x, groundY - 3, 1);
       tv.draw_line(x + 4, groundY - 6, x + 4, groundY - 4, 1);
       tv.draw_line(x, groundY - 3, x + 4, groundY - 4, 1);
     } else if (type == 1) {
-      // Kaktus Ganda
       if (color == 0) { tv.draw_rect(x, groundY - 9, 8, 8, 0, 0); return; }
       tv.draw_rect(x + 1, groundY - 8, 2, 7, 1, 1);
       tv.draw_rect(x + 5, groundY - 6, 2, 5, 1, 1);
       tv.draw_line(x, groundY - 5, x + 7, groundY - 4, 1);
     } else {
-      // Burung Pterodactyl Terbang Rendah
       byte by = groundY - 9;
       if (color == 0) { tv.draw_rect(x, by - 3, 9, 6, 0, 0); return; }
       tv.draw_line(x, by, x + 3, by, 1);
@@ -148,7 +138,8 @@ namespace RunGame {
 
   void spawnNextObstacle() {
     st->obsX = 115;
-    if (st->level == 1 && st->score < 15) {
+    // Di Level 0 hanya kaktus agar pemanasan santai; burung muncul mulai Level 1 ke atas
+    if (st->level == 0) {
       st->obsType = random(0, 2);
     } else {
       st->obsType = random(0, 3);
@@ -159,7 +150,7 @@ namespace RunGame {
     tv.fill(0);
     st->score = 0;
     st->lives = 3;
-    st->level = 1;
+    st->level = 0;
     st->dinoY = groundY - 1;
     st->vy = 0;
     st->isJumping = false;
@@ -204,7 +195,6 @@ namespace RunGame {
 
     st->animFrame = !st->animFrame;
 
-    // 1. IMMEDIATE ERASE-MOVE-DRAW T-REX (Bebas Kedip!)
     drawTrex(st->dinoY, st->isDucking, 0);
 
     bool downPressed = isPS2Pressed(PS2_BTN_DOWN);
@@ -234,17 +224,16 @@ namespace RunGame {
 
     drawTrex(st->dinoY, st->isDucking, 1);
 
-    // 2. IMMEDIATE ERASE-MOVE-DRAW RINTANGAN & KALIBRASI LEVEL KECEPATAN
     drawObstacle(st->obsX, st->obsType, 0);
 
-    // Kecepatan santai di awal (Level 1-2 = 2px, Level 3-5 = 3px, Level 6 = 4px)
-    byte speed = 2 + (st->level / 3);
+    // Kecepatan bertahap di 10 Level (L0-L3 = 2px, L4-L7 = 3px, L8-L9 = 4px)
+    byte speed = (st->level < 4) ? 2 : ((st->level < 8) ? 3 : 4);
     st->obsX -= speed;
 
     if (st->obsX < 5) {
-      st->score += 5;
-      byte newLvl = (st->score / 30) + 1;
-      if (newLvl > 6) newLvl = 6;
+      if (st->score < 999) st->score += 1; // +1 Poin per rintangan!
+      byte newLvl = st->score / 25;        // Naik level tiap 25 rintangan (L0 s/d L9)
+      if (newLvl > 9) newLvl = 9;
       if (newLvl != st->level) {
         st->level = newLvl;
         playLevelUpSound();
@@ -253,7 +242,6 @@ namespace RunGame {
       spawnNextObstacle();
     }
 
-    // 3. Deteksi Tabrakan Presisi
     bool hit = false;
     if (st->obsX >= 11 && st->obsX <= 25) {
       if (st->obsType == 2) {
@@ -278,7 +266,6 @@ namespace RunGame {
       drawObstacle(st->obsX, st->obsType, 1);
     }
 
-    // 4. Gerakkan Awan & Kerikil Tanah Tanpa Mengganggu Bulan
     if (st->animFrame) {
       drawClouds(0);
       for (byte i = 0; i < 2; i++) {

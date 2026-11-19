@@ -5,14 +5,13 @@
 
 namespace BreakoutGame {
 
-  #define BRK_COLS 10    // 10 kolom balok kecil per baris
-  #define BRK_ROWS 8     // Maksimal 8 baris (Total hingga 80 balok!)
-  #define BRK_W 8        // Jarak antar kolom 8px (Lebar gambar 6px)
-  #define BRK_H 4        // Jarak antar baris 4px (Tinggi gambar 2px)
-  #define MAX_BALLS 5    // Mendukung hingga 5 Bola sekaligus di layar!
-  #define ARENA_RIGHT 90 // Batas dinding kanan arena permainan
+  #define BRK_COLS 10
+  #define BRK_ROWS 8
+  #define BRK_W 8
+  #define BRK_H 4
+  #define MAX_BALLS 5
+  #define ARENA_RIGHT 90
 
-  // Struktur state yang menumpang di RAM WormGame::worm (0 byte RAM tambahan!)
   struct BreakoutState {
     uint16_t bricks[BRK_ROWS];
     byte paddleX;
@@ -23,7 +22,7 @@ namespace BreakoutGame {
     bool itemActive;
     int score;
     byte lives;
-    byte level;
+    byte level; // 0 s/d 9 (10 Level)
     byte bricksLeft;
     bool isGameOver;
     byte animX, animY;
@@ -41,7 +40,6 @@ namespace BreakoutGame {
     tv.draw_line(ARENA_RIGHT, 4, ARENA_RIGHT, 95, 1);
     tv.draw_line(ARENA_RIGHT + 2, 4, ARENA_RIGHT + 2, 95, 1);
 
-    // Kotak SKOR, LEVEL, LIVES, dan Animasi Mini
     tv.draw_rect(95, 4, 30, 18, 1);
     tv.draw_line(95, 8, 125, 8, 1);
 
@@ -114,19 +112,19 @@ namespace BreakoutGame {
 
   void initLevel() {
     st->bricksLeft = 0;
-    // Jumlah baris balok bertambah setiap naik level (Level 1 = 4 baris, naik hingga 8 baris = 80 balok!)
-    byte activeRows = 3 + st->level;
+    // Level 0 = 4 baris (40 balok), naik perlahan tiap 2 level hingga 8 baris (80 balok)
+    byte activeRows = 4 + (st->level / 2);
     if (activeRows > BRK_ROWS) activeRows = BRK_ROWS;
 
     for (byte r = 0; r < BRK_ROWS; r++) {
       if (r >= activeRows) {
         st->bricks[r] = 0;
-      } else if (st->level == 1 || (st->level % 3 == 1)) {
-        st->bricks[r] = 0x03FF; // Semua 10 balok penuh
-      } else if (st->level % 3 == 2) {
-        st->bricks[r] = (r % 2 == 0) ? 0x03FF : 0x02AA; // Baris penuh selang-seling kisi
+      } else if (st->level % 3 == 0) {
+        st->bricks[r] = 0x03FF; // Penuh
+      } else if (st->level % 3 == 1) {
+        st->bricks[r] = (r % 2 == 0) ? 0x03FF : 0x02AA; // Kisi selang-seling
       } else {
-        st->bricks[r] = (r == 0 || r == activeRows - 1) ? 0x03FF : 0x039F; // Pola Benteng
+        st->bricks[r] = (r == 0 || r == activeRows - 1) ? 0x03FF : 0x039F; // Benteng
       }
 
       for (byte c = 0; c < BRK_COLS; c++) {
@@ -142,7 +140,7 @@ namespace BreakoutGame {
     tv.fill(0);
     st->score = 0;
     st->lives = 3;
-    st->level = 1;
+    st->level = 0;
     st->paddleX = 38;
     st->isGameOver = false;
     st->animX = 105;
@@ -180,18 +178,15 @@ namespace BreakoutGame {
 
     updateMiniAnim();
 
-    // Hapus & gerakkan Paddle (Tahan tombol X untuk gerak Paddle lebih cepat!)
     tv.draw_line(st->paddleX, paddleY, st->paddleX + paddleW, paddleY, 0);
     tv.draw_line(st->paddleX, paddleY + 1, st->paddleX + paddleW, paddleY + 1, 0);
 
-    byte padSpeed = isPS2Pressed(PS2_BTN_CROSS) ? 4 : 3;
-    if (isPS2Pressed(PS2_BTN_LEFT) && st->paddleX > 5) st->paddleX -= padSpeed;
-    if (isPS2Pressed(PS2_BTN_RIGHT) && st->paddleX < (ARENA_RIGHT - paddleW - 2)) st->paddleX += padSpeed;
+    if (isPS2Pressed(PS2_BTN_LEFT) && st->paddleX > 5) st->paddleX -= 3;
+    if (isPS2Pressed(PS2_BTN_RIGHT) && st->paddleX < (ARENA_RIGHT - paddleW - 2)) st->paddleX += 3;
 
     tv.draw_line(st->paddleX, paddleY, st->paddleX + paddleW, paddleY, 1);
     tv.draw_line(st->paddleX, paddleY + 1, st->paddleX + paddleW, paddleY + 1, 1);
 
-    // Update kapsul bonus '+' (Setiap tertangkap PASTI menambah bola baru hingga 5 bola!)
     if (st->itemActive) {
       drawItem(st->itemX, st->itemY, 0);
       st->itemY += 1;
@@ -208,16 +203,15 @@ namespace BreakoutGame {
             st->ballX[b] = st->paddleX + (paddleW / 2);
             st->ballY[b] = paddleY - 3;
             st->dx[b] = (b & 1) ? 1 : -1;
-            if (b >= 3) st->dx[b] *= 2;
             st->dy[b] = -1;
             spawned = true;
             break;
           }
         }
-        // Jika kelima bola sudah aktif semua di layar, beri bonus skor & nyawa
         if (!spawned) {
           if (st->lives < 4) st->lives++;
-          st->score += 15;
+          st->score += 3;
+          if (st->score > 999) st->score = 999;
           updateStatsPanel();
         }
       } else if (st->itemY > 93) {
@@ -227,7 +221,6 @@ namespace BreakoutGame {
       }
     }
 
-    // Loop memproses hingga 5 Bola sekaligus!
     byte activeBallsCount = 0;
     for (byte b = 0; b < MAX_BALLS; b++) {
       if (!st->ballActive[b]) continue;
@@ -243,17 +236,14 @@ namespace BreakoutGame {
       if (st->ballX[b] >= ARENA_RIGHT - 3) { st->ballX[b] = ARENA_RIGHT - 3; st->dx[b] = -st->dx[b]; playTone(300, 8); }
       if (st->ballY[b] <= 6) { st->ballY[b] = 6; st->dy[b] = -st->dy[b]; playTone(300, 8); }
 
-      // Pantulan Paddle
       if (st->dy[b] > 0 && st->ballY[b] >= paddleY - 2 && st->ballY[b] <= paddleY + 1 &&
           st->ballX[b] + 1 >= st->paddleX && st->ballX[b] <= st->paddleX + paddleW) {
         st->dy[b] = -1;
-        if (st->ballX[b] < st->paddleX + 5) st->dx[b] = -2;
-        else if (st->ballX[b] > st->paddleX + paddleW - 5) st->dx[b] = 2;
-        else st->dx[b] = (st->dx[b] < 0) ? -1 : 1;
+        if (st->ballX[b] < st->paddleX + (paddleW / 2) - 2) st->dx[b] = -1;
+        else if (st->ballX[b] > st->paddleX + (paddleW / 2) + 2) st->dx[b] = 1;
         playTone(500, 12);
       }
 
-      // Cek Tabrakan dengan Balok Kecil (10 Kolom x 8 Baris)
       if (st->ballY[b] >= 10 && st->ballY[b] < 10 + (BRK_ROWS * BRK_H)) {
         byte r = (st->ballY[b] - 10) / BRK_H;
         byte c = (st->ballX[b] - 6) / BRK_W;
@@ -263,12 +253,11 @@ namespace BreakoutGame {
           byte by = 10 + (r * BRK_H);
           tv.draw_rect(bx, by, BRK_W - 3, BRK_H - 2, 0, 0);
           st->dy[b] = -st->dy[b];
-          st->score += 2;
+          if (st->score < 999) st->score += 1; // +1 Poin per balok!
           st->bricksLeft--;
           updateStatsPanel();
           playTone(850 + (r * 60), 12);
 
-          // Peluang 35% menjatuhkan kapsul tambah bola '+'
           if (!st->itemActive && activeBallsCount < MAX_BALLS && random(0, 3) == 0) {
             st->itemActive = true;
             st->itemX = bx + 2;
@@ -283,7 +272,7 @@ namespace BreakoutGame {
               }
             }
             if (st->itemActive) drawItem(st->itemX, st->itemY, 0);
-            playTone(880, 40); tv.delay(50); playTone(1318, 90);
+            playLevelUpSound();
             tv.delay(400);
             st->level++;
             if (st->level > 9) st->level = 9;
@@ -293,7 +282,6 @@ namespace BreakoutGame {
         }
       }
 
-      // Cek bola jatuh ke bawah
       if (st->ballY[b] > 93) {
         st->ballActive[b] = false;
         activeBallsCount--;
@@ -303,7 +291,6 @@ namespace BreakoutGame {
       }
     }
 
-    // Kurangi nyawa hanya jika SEMUA bola di layar habis
     if (activeBallsCount == 0) {
       if (st->itemActive) { drawItem(st->itemX, st->itemY, 0); st->itemActive = false; }
       st->lives--;
@@ -318,8 +305,7 @@ namespace BreakoutGame {
       resetPrimaryBall();
     }
 
-    byte delayMs = (st->level >= 4) ? 14 : 17;
-    tv.delay(delayMs);
+    tv.delay(17);
   }
 
 } // namespace BreakoutGame

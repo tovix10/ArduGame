@@ -80,6 +80,28 @@ void playTone(unsigned int frequency, unsigned long duration_ms) {
   tv.tone(frequency, duration_ms);
 }
 
+// --- GABUNGAN 4 MELODI MENU CERIA (32 NADA, TEMPO SANTAI, PROGMEM - 0 BYTE RAM) ---
+#define MENU_MELODY_LEN 32
+
+const uint16_t menuMelodyNotes[MENU_MELODY_LEN] PROGMEM = {
+  // Frase 1: Ceria Arcade Klasik
+  523, 659, 784, 1046, 880, 1046, 784, 659,
+  // Frase 2: Berkilau Petualangan
+  523, 659, 784, 1046, 988, 1046, 880, 1046,
+  // Frase 3: Lincah Action Retro
+  587, 740, 880, 1175, 1047, 880, 740, 587,
+  // Frase 4: Hangat Chiptune Santai (Penutup)
+  440, 554, 659, 880, 784, 659, 587, 523
+};
+
+const uint8_t menuMelodyDurs[MENU_MELODY_LEN] PROGMEM = {
+  // Durasi nada santai dengan aksen tahan di tiap akhir frase
+  85, 85, 95, 160, 90, 150, 95, 180,
+  85, 85, 95, 160, 85, 150, 95, 190,
+  80, 80, 90, 155, 90, 90,  90, 180,
+  90, 90, 95, 165, 95, 95,  95, 220
+};
+
 // --- SISTEM MUSIK JINGLE TEMA 7 GAME (PROGMEM - 0 BYTE RAM!) ---
 const uint16_t gameJingles[7][4] PROGMEM = {
   {523, 659, 784, 1046}, // 1. Worm: Arpeggio Ceria
@@ -139,24 +161,21 @@ void drawDigit(byte x, byte y, byte d) {
   }
 }
 
-// --- INDIKATOR SENSOR BATERAI 1S LI-ION (PIN A1) ---
+// --- INDIKATOR SENSOR BATERAI 1S LI-ION (PIN A1, HANYA DIPANGGIL DI MENU) ---
 void drawBatteryIcon(bool blinkState) {
   int adc = analogRead(A1);
   byte bars = 0;
-  // Kalibrasi 1S Li-ion (Referensi Step-Up 5.0V):
-  // > 4.0V (~818) = 3 Bar, > 3.6V (~735) = 2 Bar, > 3.25V (~665) = 1 Bar
-  if (adc > 815) bars = 3;
-  else if (adc > 735) bars = 2;
-  else if (adc > 665) bars = 1;
+  // Kalibrasi berdasarkan tegangan di pin A1 (setelah saklar, Vref = 5.17V):
+  if (adc > 800) bars = 3;      // Sekitar >= 4.04V di A1
+  else if (adc > 715) bars = 2; // Sekitar 3.61V - 4.04V di A1
+  else if (adc > 633) bars = 1; // Sekitar 3.20V - 3.61V di A1
 
-  // Bersihkan area baterai di kanan atas header menu
   tv.draw_rect(100, 8, 15, 7, 0, 0);
 
-  // Jika baterai kritis (0 bar), kedipkan kerangka baterai sebagai peringatan!
   if (bars == 0 && !blinkState) return;
 
   tv.draw_rect(101, 8, 11, 6, 1, 0);
-  tv.draw_line(113, 10, 113, 12, 1); // Kutub positif baterai
+  tv.draw_line(113, 10, 113, 12, 1);
   for (byte i = 0; i < bars; i++) {
     tv.draw_rect(103 + (i * 3), 10, 1, 2, 1, 1);
   }
@@ -466,6 +485,10 @@ void showMainMenu() {
   const byte visibleRows = 3;
   byte animTick = 0;
 
+  byte menuNoteIdx = 0;
+  unsigned long lastMenuNoteMs = 0;
+  unsigned int nextMenuWaitMs = 200;
+
   tv.fill(0);
   // Bingkai Ganda Konsol Arcade
   tv.draw_rect(4, 3, 120, 90, 1);
@@ -476,7 +499,7 @@ void showMainMenu() {
   drawWordHAFIZ(44, 8, false);
   drawDigit(80, 8, 7);
 
-  // Tampilkan Ikon Baterai Pertama Kali
+  // Tampilkan Ikon Baterai Pertama Kali (Khusus di Menu)
   drawBatteryIcon(true);
 
   // Jalur Scrollbar di Sisi Kanan
@@ -526,6 +549,24 @@ void showMainMenu() {
       drawBatteryIcon(starColor);
     }
 
+    // Pemutar Gabungan 4 Melodi Menu (Tempo santai & jeda antar frase jelas)
+    unsigned long nowMs = millis();
+    if (nowMs - lastMenuNoteMs >= nextMenuWaitMs) {
+      uint16_t mFreq = pgm_read_word(&menuMelodyNotes[menuNoteIdx]);
+      uint8_t  mDur  = pgm_read_byte(&menuMelodyDurs[menuNoteIdx]);
+      playTone(mFreq, mDur);
+      lastMenuNoteMs = nowMs;
+      menuNoteIdx++;
+      if (menuNoteIdx >= MENU_MELODY_LEN) {
+        menuNoteIdx = 0;
+        nextMenuWaitMs = mDur + 420; // Jeda sebelum mengulang seluruh rangkaian
+      } else if ((menuNoteIdx & 0x07) == 0) {
+        nextMenuWaitMs = mDur + 190; // Jeda napas setiap selesai 1 frase (8 nada)
+      } else {
+        nextMenuWaitMs = mDur + 70;  // Jeda antar nada di dalam frase
+      }
+    }
+
     tv.delay(20);
     readPS2();
 
@@ -537,6 +578,8 @@ void showMainMenu() {
           redrawMenu = true;
         }
         playTone(800, 15);
+        lastMenuNoteMs = millis();
+        nextMenuWaitMs = 140;
       }
       while (isPS2Pressed(PS2_BTN_UP)) { tv.delay(16); readPS2(); }
     } else if (isPS2Pressed(PS2_BTN_DOWN)) {
@@ -547,10 +590,11 @@ void showMainMenu() {
           redrawMenu = true;
         }
         playTone(800, 15);
+        lastMenuNoteMs = millis();
+        nextMenuWaitMs = 140;
       }
       while (isPS2Pressed(PS2_BTN_DOWN)) { tv.delay(16); readPS2(); }
     } else if (isPS2Pressed(PS2_BTN_START) || isPS2Pressed(PS2_BTN_CROSS)) {
-      // Putar Musik Jingle Spesial sesuai Tema Game yang dipilih!
       playGameJingle(selected);
       while (isPS2Pressed(PS2_BTN_START) || isPS2Pressed(PS2_BTN_CROSS)) {
         tv.delay(16);

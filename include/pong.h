@@ -24,17 +24,7 @@ namespace PongGame {
   const byte paddleBx = 118;
   byte score = 0;     // Skor AI
   byte score2 = 0;    // Skor Pemain
-  byte rallyCount = 0;
-  byte speedLevel = 1;
   boolean isGameOver = false;
-
-  void updateSpeedBadge() {
-    tv.draw_rect(104, 3, 14, 8, 0, 0);
-    // Tampilkan indikator "L1" - "L3" di kanan atas saat reli meningkat
-    tv.draw_line(105, 4, 105, 10, 1);
-    tv.draw_line(105, 10, 109, 10, 1);
-    drawDigit(112, 4, speedLevel);
-  }
 
   void drawScore() {
     tv.draw_rect(20, 1, 102, 13, 0, 0);
@@ -54,8 +44,6 @@ namespace PongGame {
     // Ornamen lampu stadion di kiri & kanan papan skor
     tv.draw_rect(34, 4, 6, 6, 1); tv.set_pixel(37, 7, 1);
     tv.draw_rect(88, 4, 6, 6, 1); tv.set_pixel(91, 7, 1);
-
-    updateSpeedBadge();
   }
 
   // Hanya menggambar garis tengah & lingkaran tengah (Tanpa menimpa dinding atas/bawah!)
@@ -64,12 +52,11 @@ namespace PongGame {
       tv.draw_line(64, y, 64, y + 3, 1);
     }
     tv.draw_circle(64, 54, 10, 1);
-    tv.set_pixel(64, 54, 1); // Titik kick-off tengah stadion
+    tv.set_pixel(64, 54, 1);
   }
 
   void drawCourt() {
     tv.draw_rect(COURT_LEFT, COURT_TOP, COURT_RIGHT - COURT_LEFT, COURT_BOTTOM - COURT_TOP, 1);
-    // Ornamen Sudut Stadion (Corner Arcs)
     tv.set_pixel(COURT_LEFT + 2, COURT_TOP + 1, 1);
     tv.set_pixel(COURT_LEFT + 1, COURT_TOP + 2, 1);
     tv.set_pixel(COURT_RIGHT - 2, COURT_TOP + 1, 1);
@@ -97,9 +84,6 @@ namespace PongGame {
     bally = random(COURT_TOP + 10, COURT_BOTTOM - 12);
     dx = dirX;
     dy = (random(0, 2) == 0) ? 1 : -1;
-    rallyCount = 0;
-    speedLevel = 1;
-    updateSpeedBadge();
     drawCourt();
   }
 
@@ -119,19 +103,17 @@ namespace PongGame {
   void updateAI() {
     if (dx < 0 && ballx < 85) {
       byte center = paddleAy + (PADDLE_HEIGHT / 2);
-      byte aiStep = (speedLevel >= 3) ? 3 : 2;
-      if (bally < center - 2 && paddleAy > COURT_TOP + 3) paddleAy -= aiStep;
-      else if (bally > center + 2 && paddleAy < (COURT_BOTTOM - PADDLE_HEIGHT - 3)) paddleAy += aiStep;
+      if (bally < center - 2 && paddleAy > COURT_TOP + 3) paddleAy -= 2;
+      else if (bally > center + 2 && paddleAy < (COURT_BOTTOM - PADDLE_HEIGHT - 3)) paddleAy += 2;
     }
   }
 
   void updatePlayer() {
-    // Tahan tombol X untuk menggerakkan paddle sedikit lebih cepat (Sprint Paddle)
-    byte pStep = isPS2Pressed(PS2_BTN_CROSS) ? 3 : 2;
+    // Kecepatan paddle tetap stabil (2px per frame) agar mudah dikontrol
     if (isPS2Pressed(PS2_BTN_UP) && paddleBy > COURT_TOP + 3) {
-      paddleBy -= pStep;
+      paddleBy -= 2;
     } else if (isPS2Pressed(PS2_BTN_DOWN) && paddleBy < (COURT_BOTTOM - PADDLE_HEIGHT - 3)) {
-      paddleBy += pStep;
+      paddleBy += 2;
     }
   }
 
@@ -145,21 +127,6 @@ namespace PongGame {
   void triggerGameOver() {
     isGameOver = true;
     drawGameOverBox();
-  }
-
-  void checkRallyLevelUp() {
-    rallyCount++;
-    byte newSpd = 1;
-    if (rallyCount >= 8) newSpd = 3;
-    else if (rallyCount >= 4) newSpd = 2;
-
-    if (newSpd != speedLevel) {
-      speedLevel = newSpd;
-      updateSpeedBadge();
-      playTone(784, 25);
-    } else {
-      playTone(493, 20);
-    }
   }
 
   void moveBall() {
@@ -184,18 +151,18 @@ namespace PongGame {
       return;
     }
 
-    int8_t moveX = (speedLevel >= 2) ? dx * 2 : dx;
-    ballx += moveX;
+    // Kecepatan bola konstan tanpa level kecepatan pantulan
+    ballx += dx;
     bally += dy;
 
-    // Pantulan dinding atas & bawah bebas kedip (Tidak menyentuh garis COURT_TOP = 16)
+    // Pantulan dinding atas & bawah bebas kedip
     if (bally <= COURT_TOP + 2) {
       bally = COURT_TOP + 2;
-      dy = (speedLevel >= 3) ? 2 : 1;
+      dy = 1;
       playTone(294, 15);
     } else if (bally >= COURT_BOTTOM - BALL_SIZE - 2) {
       bally = COURT_BOTTOM - BALL_SIZE - 2;
-      dy = (speedLevel >= 3) ? -2 : -1;
+      dy = -1;
       playTone(294, 15);
     }
 
@@ -205,7 +172,7 @@ namespace PongGame {
       dx = 1;
       ballx = paddleAx + PADDLE_WIDTH + 1;
       dy = (bally < paddleAy + (PADDLE_HEIGHT / 2)) ? -1 : 1;
-      checkRallyLevelUp();
+      playTone(493, 20);
     }
 
     // Deteksi tumbukan Paddle Kanan (Pemain)
@@ -214,7 +181,7 @@ namespace PongGame {
       dx = -1;
       ballx = paddleBx - BALL_SIZE - 1;
       dy = (bally < paddleBy + (PADDLE_HEIGHT / 2)) ? -1 : 1;
-      checkRallyLevelUp();
+      playTone(493, 20);
     }
   }
 
@@ -237,11 +204,9 @@ namespace PongGame {
 
     if (checkGlobalPause()) return;
 
-    // Immediate Erase-Move-Draw pada Bola & Paddle
     byte oldBallX = ballx;
     setBallPixels(0);
 
-    // Hanya pulihkan garis/lingkaran tengah jika bola baru saja melintasinya
     if (oldBallX >= 48 && oldBallX <= 78) {
       refreshCenterCourt();
     }

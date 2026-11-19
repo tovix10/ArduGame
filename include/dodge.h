@@ -17,14 +17,22 @@ namespace DodgeGame {
     byte shieldTimer;
     int score;
     byte lives;
-    byte level;
+    byte level; // 0 s/d 9 (10 Level)
     bool isGameOver;
     bool flameToggle;
+    byte bgmStep;
+    byte bgmCooldown;
   };
 
-  // Pinjam memori WormGame::worm (0 byte RAM tambahan!)
   DodgeState* st = (DodgeState*)WormGame::worm;
   const byte playerY = 82;
+
+  void dodgeTone(unsigned int freq, unsigned long dur, bool sfxPriority) {
+    playTone(freq, dur);
+    if (sfxPriority) {
+      st->bgmCooldown = 8;
+    }
+  }
 
   void updateScoreAndLevel() {
     tv.draw_rect(4, 2, 20, 7, 0, 0);
@@ -55,7 +63,6 @@ namespace DodgeGame {
     updateShieldAndLives();
   }
 
-  // Ornamen Planet Bercincin (Saturnus) di Langit Atas
   void drawSpaceOrnaments() {
     tv.draw_circle(108, 20, 3, 1);
     tv.draw_line(102, 20, 114, 20, 1);
@@ -73,16 +80,13 @@ namespace DodgeGame {
 
   void drawRunner(byte x, byte y, byte color) {
     if (color == 0) {
-      // Hapus presisi tanpa pernah menyentuh garis tanah y = 91!
       tv.draw_rect(x - 3, y - 3, 12, 10, 0, 0);
       return;
     }
 
-    // Kepala & Badan
     tv.draw_rect(x + 2, y, 2, 2, 1, 1);
     tv.draw_line(x + 3, y + 2, x + 3, y + 5, 1);
 
-    // Animasi Tangan & Kaki Berlari
     if (st->runFrame == 0) {
       tv.draw_line(x + 1, y + 3, x + 5, y + 3, 1);
       tv.draw_line(x + 2, y + 6, x + 1, y + 7, 1);
@@ -93,7 +97,6 @@ namespace DodgeGame {
       tv.draw_line(x + 4, y + 6, x + 3, y + 7, 1);
     }
 
-    // Kubah Perisai Kebal (Bagian atas dan samping saja agar tidak menabrak tanah)
     if (st->shieldTimer > 0 && (st->flameToggle || st->shieldTimer > 30)) {
       tv.draw_circle(x + 3, y + 2, 5, 1);
     }
@@ -126,13 +129,15 @@ namespace DodgeGame {
     tv.fill(0);
     st->score = 0;
     st->lives = 3;
-    st->level = 1;
+    st->level = 0;
     st->playerX = 60;
     st->runFrame = 0;
     st->shieldItemActive = false;
     st->shieldTimer = 0;
     st->isGameOver = false;
     st->flameToggle = false;
+    st->bgmStep = 0;
+    st->bgmCooldown = 0;
 
     for (byte i = 0; i < MAX_METEORS; i++) {
       resetObs(i);
@@ -145,6 +150,19 @@ namespace DodgeGame {
     drawHeader();
     drawSpaceOrnaments();
     drawRunner(st->playerX, playerY, 1);
+  }
+
+  void updateDodgeBgm(bool moved) {
+    if (st->bgmCooldown > 0) {
+      st->bgmCooldown--;
+      return;
+    }
+    if (moved) return;
+    if (st->flameToggle) {
+      static const uint16_t pulseNotes[4] = {196, 247, 294, 247};
+      dodgeTone(pulseNotes[st->bgmStep & 3], 10, false);
+      st->bgmStep++;
+    }
   }
 
   void update() {
@@ -168,11 +186,9 @@ namespace DodgeGame {
 
     st->flameToggle = !st->flameToggle;
 
-    // 1. IMMEDIATE ERASE-MOVE-DRAW KARAKTER (Bebas Kedip!)
     drawRunner(st->playerX, playerY, 0);
 
     bool moved = false;
-    // Tombol X untuk Dash/Sprint menghindar meteor!
     byte step = isPS2Pressed(PS2_BTN_CROSS) ? 4 : 3;
     if (isPS2Pressed(PS2_BTN_LEFT) && st->playerX > 8) {
       st->playerX -= step;
@@ -184,19 +200,18 @@ namespace DodgeGame {
     }
     if (moved && st->flameToggle) {
       st->runFrame = !st->runFrame;
+      dodgeTone(st->runFrame ? 320 : 280, 8, false);
     } else if (!moved) {
       st->runFrame = 0;
     }
 
     drawRunner(st->playerX, playerY, 1);
 
-    // 2. Durasi Perisai Kebal
     if (st->shieldTimer > 0) {
       st->shieldTimer--;
       if (st->shieldTimer == 0) updateShieldAndLives();
     }
 
-    // 3. Kapsul Bonus Perisai (Shield Orb)
     if (st->shieldItemActive) {
       tv.draw_circle(st->shieldX, st->shieldY, 2, 0);
       st->shieldY += 2;
@@ -204,7 +219,7 @@ namespace DodgeGame {
           st->shieldX >= st->playerX - 2 && st->shieldX <= st->playerX + 8) {
         st->shieldItemActive = false;
         st->shieldTimer = 150;
-        playTone(1200, 50);
+        dodgeTone(1200, 50, true);
         updateShieldAndLives();
       } else if (st->shieldY > 85) {
         st->shieldItemActive = false;
@@ -217,34 +232,38 @@ namespace DodgeGame {
       st->shieldY = 16;
     }
 
-    // 4. IMMEDIATE ERASE-MOVE-DRAW TIAP METEOR SATU PER SATU
-    byte activeMeteors = (st->level >= 4) ? 5 : (st->level + 2);
+    // Jumlah meteor & kecepatan naik sangat sabar tiap 35 poin (10 Level: L0 s/d L9)
+    byte activeMeteors = 2 + (st->level / 3);
     if (activeMeteors > MAX_METEORS) activeMeteors = MAX_METEORS;
-    byte fallSpeed = (st->level >= 4) ? 3 : 2;
+    byte fallSpeed = (st->level >= 6) ? 3 : 2;
 
     for (byte i = 0; i < activeMeteors; i++) {
-      drawMeteor(st->obsX[i], st->obsY[i], 0); // Hapus meteor ke-i
-      st->obsY[i] += fallSpeed;               // Geser posisi
+      drawMeteor(st->obsX[i], st->obsY[i], 0);
+      st->obsY[i] += fallSpeed;
 
       if (st->obsY[i] > 85) {
         resetObs(i);
-        st->score += 2;
-        byte newLvl = (st->score / 50) + 1;
-        if (newLvl > 5) newLvl = 5;
+        if (st->score < 999) st->score += 1; // +1 Poin per meteor lolos!
+        byte newLvl = st->score / 35;
+        if (newLvl > 9) newLvl = 9;
         if (newLvl != st->level) {
           st->level = newLvl;
           playLevelUpSound();
+          st->bgmCooldown = 12;
+        } else {
+          dodgeTone(620, 8, false);
         }
         updateScoreAndLevel();
       } else if (st->obsY[i] + 4 >= playerY && st->obsY[i] <= playerY + 7 &&
                  st->obsX[i] + 4 >= st->playerX && st->obsX[i] <= st->playerX + 6) {
         resetObs(i);
         if (st->shieldTimer > 0) {
-          st->score += 10;
-          playTone(880, 25);
+          st->score += 3;
+          if (st->score > 999) st->score = 999;
+          dodgeTone(880, 25, true);
           updateScoreAndLevel();
         } else {
-          playTone(150, 180);
+          dodgeTone(150, 180, true);
           st->lives--;
           updateShieldAndLives();
           if (st->lives == 0) {
@@ -254,11 +273,12 @@ namespace DodgeGame {
           }
         }
       } else {
-        drawMeteor(st->obsX[i], st->obsY[i], 1); // Langsung gambar kembali meteor ke-i!
+        drawMeteor(st->obsX[i], st->obsY[i], 1);
       }
     }
 
-    // Jaga ornamen planet langit tetap utuh jika sempat terlewati meteor
+    updateDodgeBgm(moved);
+
     if (st->flameToggle) drawSpaceOrnaments();
 
     tv.delay(22);

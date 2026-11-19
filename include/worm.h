@@ -9,7 +9,7 @@ namespace WormGame {
   #define FRAME_Y0 12
   #define FRAME_X1 123
   #define FRAME_Y1 92
-  #define MAX_SEGMENTS 100 // Ditingkatkan ke 100 segmen (200 byte buffer bersama)
+  #define MAX_SEGMENTS 100
   #define FOOD_COUNT 3
 
   struct Segment {
@@ -29,13 +29,12 @@ namespace WormGame {
   boolean isGameOver = false;
   bool blinkToggle = false;
 
-  // Level 1 s/d 9 (Naik setiap 30 poin)
+  // 10 Tingkatan Level (L0 s/d L9), naik sangat sabar setiap 25 poin (25 makanan)
   byte getLevel() {
-    byte lvl = (currentScore / 30) + 1;
+    byte lvl = currentScore / 25;
     return (lvl > 9) ? 9 : lvl;
   }
 
-  // Menambah panjang segmen ular di ujung ekor dengan aman
   void growWorm(byte addCount) {
     byte tx = worm[currentSegments - 1].x;
     byte ty = worm[currentSegments - 1].y;
@@ -49,17 +48,15 @@ namespace WormGame {
 
   void drawHeader() {
     tv.draw_rect(4, 1, 120, 10, 0, 0);
-    // Skor di kiri atas
     drawDigit(6, 3, (currentScore / 100) % 10);
     drawDigit(13, 3, (currentScore / 10) % 10);
     drawDigit(20, 3, currentScore % 10);
 
-    // Indikator Level di tengah atas ("L1" s/d "L9")
+    // Indikator Level L0 s/d L9 (10 Level)
     tv.draw_line(44, 3, 44, 9, 1);
     tv.draw_line(44, 9, 48, 9, 1);
     drawDigit(51, 3, getLevel());
 
-    // Indikator Ghost Mode (Bar Waktu Kebal di Kanan Atas)
     if (ghostTimer > 0) {
       tv.draw_rect(70, 3, 50, 6, 1);
       byte barW = (ghostTimer > 48) ? 48 : ghostTimer;
@@ -200,7 +197,7 @@ namespace WormGame {
       }
     }
 
-    // 1. Cek Memakan Makanan Biasa (+2 Segmen setiap makan!)
+    // 1. Makan Makanan Biasa: +1 Poin & +2 Segmen
     for (byte i = 0; i < FOOD_COUNT; i++) {
       if (abs(nextX - (int)foodX[i]) <= 2 && abs(nextY - (int)foodY[i]) <= 2) {
         tv.draw_rect(foodX[i] - 1, foodY[i] - 1, 3, 3, 0, 0);
@@ -208,19 +205,19 @@ namespace WormGame {
         shiftSegments();
         worm[0].x = nextX;
         worm[0].y = nextY;
-        growWorm(2); // Perpanjang 2 segmen (4 piksel) tiap apel!
-        currentScore += 5;
+        growWorm(2);
+        if (currentScore < 999) currentScore += 1;
         spawnFood(i);
 
         if (getLevel() > oldLvl) {
-          playTone(880, 25); tv.delay(30); playTone(1318, 45);
+          playLevelUpSound();
         } else {
           playTone(1046, 15);
         }
 
         drawHeader();
 
-        if (bonusSpawnTimer == 0 && (currentScore % 15 == 0)) {
+        if (bonusSpawnTimer == 0 && (currentScore % 10 == 0)) {
           bonusX = (random((FRAME_X0 + 6) / 2, (FRAME_X1 - 8) / 2)) * 2;
           bonusY = (random((FRAME_Y0 + 6) / 2, (FRAME_Y1 - 8) / 2)) * 2;
           bonusSpawnTimer = 65;
@@ -229,13 +226,14 @@ namespace WormGame {
       }
     }
 
-    // 2. Cek Memakan Makanan Bonus (+3 Segmen & Ghost Mode)
+    // 2. Makan Bonus Bintang: +3 Poin & +3 Segmen
     if (bonusSpawnTimer > 0 && abs(nextX - (int)bonusX) <= 3 && abs(nextY - (int)bonusY) <= 3) {
       drawBonusFood(0);
       bonusSpawnTimer = 0;
       ghostTimer = 85;
-      growWorm(3); // Bonus juga memperpanjang badan ular 3 segmen!
-      currentScore += 15;
+      growWorm(3);
+      currentScore += 3;
+      if (currentScore > 999) currentScore = 999;
       playTone(1400, 40);
       drawHeader();
     }
@@ -268,10 +266,10 @@ namespace WormGame {
 
     if (checkGlobalPause()) return;
 
-    // Kecepatan progresif dari Level 1 (santai) hingga Level 9 (sangat cepat)
+    // Kurva kecepatan halus untuk 10 tingkatan (L0 s/d L9)
     byte lvl = getLevel();
-    byte pollLoops = (lvl < 7) ? (8 - lvl) : 2;
-    byte stepDelay = (lvl < 7) ? 15 : (21 - lvl);
+    byte pollLoops = (lvl <= 4) ? (8 - lvl) : ((lvl <= 7) ? 3 : 2);
+    byte stepDelay = (lvl <= 7) ? 16 : (22 - lvl);
     byte nextDir = currentDirection;
 
     for (byte i = 0; i < pollLoops; i++) {
@@ -286,7 +284,6 @@ namespace WormGame {
 
       tv.delay(stepDelay);
 
-      // Tombol X untuk Sprint / Turbo
       if (isPS2Pressed(PS2_BTN_CROSS)) {
         break;
       }
