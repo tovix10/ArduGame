@@ -6,12 +6,12 @@
 
 namespace TetrisGame {
 
-  // TRIK HEMAT RAM 40 BYTE: Meminjam array worm[] milik WormGame saat Tetris aktif!
+  // Meminjam array worm[] milik WormGame saat Tetris aktif (0 byte RAM tambahan)
   uint16_t* board = (uint16_t*)WormGame::worm;
 
   int8_t curX, curY;
   byte curType, curRot;
-  byte nextType = 0; // Menyimpan balok selanjutnya (Hanya 1 byte RAM)
+  byte nextType = 0;
   int score = 0;
   boolean isGameOver = false;
   unsigned long dropTimer = 0;
@@ -20,7 +20,6 @@ namespace TetrisGame {
   unsigned long animTimer = 0;
   bool starState = false;
 
-  // Disimpan di Flash (PROGMEM)
   const uint16_t tetrisShapes[7][4] PROGMEM = {
     {0x0F00, 0x2222, 0x00F0, 0x4444}, // I
     {0x6600, 0x6600, 0x6600, 0x6600}, // O
@@ -31,7 +30,6 @@ namespace TetrisGame {
     {0x0E80, 0xC440, 0x2E00, 0x4460}  // L
   };
 
-  // Menghitung level 0 s/d 9 (10 tingkatan) dengan kenaikan sabar tiap 10 poin/baris
   byte getLevel() {
     byte lvl = score / 10;
     return (lvl > 9) ? 9 : lvl;
@@ -41,15 +39,13 @@ namespace TetrisGame {
     return pgm_read_word(&(tetrisShapes[type][rot]));
   }
 
-  // Menggambar 1 kotak sel di papan utama (3x3 piksel)
   void drawCell(int8_t c, int8_t r, byte color) {
     if (r < 0 || r >= 20 || c < 0 || c >= 10) return;
     byte px = 44 + (c * 4);
-    byte py = 15 + (r * 4);
+    byte py = 14 + (r * 4);
     tv.draw_rect(px, py, 2, 2, color, color);
   }
 
-  // Menggambar balok yang akan turun berikutnya di kotak kiri tengah
   void drawNextPiece() {
     tv.draw_rect(8, 46, 22, 18, 0, 0);
     uint16_t shape = getShape(nextType, 0);
@@ -65,24 +61,21 @@ namespace TetrisGame {
   }
 
   void drawScoreAndLevel() {
-    // Bersihkan & gambar angka Skor di panel kiri atas
     tv.draw_rect(7, 20, 24, 9, 0, 0);
     drawDigit(9, 21, (score / 100) % 10);
     drawDigit(16, 21, (score / 10) % 10);
     drawDigit(23, 21, score % 10);
 
-    // Bersihkan & gambar Level (0 s/d 9) di panel kanan atas
     tv.draw_rect(101, 20, 12, 9, 0, 0);
     drawDigit(105, 21, getLevel());
   }
 
-  // Menggambar seluruh bingkai dekorasi, menara kubah kanan, & ornamen kiri
   void drawDecorations() {
-    tv.draw_line(42, 13, 42, 95, 1);
-    tv.draw_line(85, 13, 85, 95, 1);
-    tv.draw_line(42, 95, 85, 95, 1);
-    tv.draw_line(40, 13, 40, 95, 1);
-    tv.draw_line(87, 13, 87, 95, 1);
+    tv.draw_line(42, 13, 42, 94, 1);
+    tv.draw_line(85, 13, 85, 94, 1);
+    tv.draw_line(42, 94, 85, 94, 1);
+    tv.draw_line(40, 13, 40, 94, 1);
+    tv.draw_line(87, 13, 87, 94, 1);
 
     tv.draw_rect(4, 13, 31, 19, 1);
     tv.draw_line(4, 17, 35, 17, 1);
@@ -93,18 +86,18 @@ namespace TetrisGame {
     tv.set_pixel(17, 39, 1); tv.set_pixel(19, 39, 1); tv.set_pixel(18, 40, 1); tv.set_pixel(17, 41, 1); tv.set_pixel(19, 41, 1);
     tv.draw_line(23, 39, 25, 39, 1); tv.draw_line(24, 39, 24, 41, 1);
 
-    tv.draw_rect(4, 72, 31, 23, 1);
+    tv.draw_rect(4, 72, 31, 22, 1);
     tv.draw_rect(10, 78, 11, 3, 1, 1); tv.draw_rect(14, 82, 3, 3, 1, 1);
     tv.draw_rect(24, 77, 3, 11, 1, 1); tv.draw_rect(20, 85, 3, 3, 1, 1);
 
     tv.draw_rect(92, 13, 31, 19, 1);
     tv.draw_line(92, 17, 123, 17, 1);
 
-    tv.draw_rect(92, 38, 31, 57, 1);
-    tv.draw_rect(95, 86, 25, 7, 1, 1);
-    tv.draw_rect(97, 72, 5, 14, 1);
-    tv.draw_rect(105, 60, 6, 26, 1);
-    tv.draw_rect(114, 74, 5, 12, 1);
+    tv.draw_rect(92, 38, 31, 56, 1);
+    tv.draw_rect(95, 85, 25, 7, 1, 1);
+    tv.draw_rect(97, 72, 5, 13, 1);
+    tv.draw_rect(105, 60, 6, 25, 1);
+    tv.draw_rect(114, 74, 5, 11, 1);
     tv.set_pixel(107, 65, 1); tv.set_pixel(108, 65, 1);
     tv.set_pixel(107, 72, 1); tv.set_pixel(108, 72, 1);
     tv.draw_rect(96, 68, 7, 3, 1, 1);  tv.draw_line(99, 63, 99, 68, 1);
@@ -220,7 +213,6 @@ namespace TetrisGame {
         }
       }
 
-      // Skor +1 per baris yang berhasil dibersihkan (maksimal 999)
       score += linesCleared;
       if (score > 999) score = 999;
 
@@ -273,7 +265,14 @@ namespace TetrisGame {
       return;
     }
 
+    bool wasPaused = isPS2Pressed(PS2_BTN_START);
     if (checkGlobalPause()) return;
+    if (wasPaused) {
+      // Pulihkan garis batas bawah & papan setelah keluar dari mode pause
+      tv.draw_line(42, 94, 85, 94, 1);
+      redrawStaticBoard();
+      drawActivePiece(1);
+    }
 
     unsigned long now = millis();
 
@@ -282,7 +281,6 @@ namespace TetrisGame {
       updateRightPanelAnim();
     }
 
-    // 1. Kontrol Geser Kiri / Kanan & Turun Cepat
     if (now - inputTimer > 90) {
       if (isPS2Pressed(PS2_BTN_LEFT)) {
         if (!checkCollision(curX - 1, curY, curType, curRot)) {
@@ -313,7 +311,6 @@ namespace TetrisGame {
       }
     }
 
-    // 2. Kontrol Putar / Rotasi Balok
     if (now - rotateTimer > 160) {
       if (isPS2Pressed(PS2_BTN_CROSS) || isPS2Pressed(PS2_BTN_UP)) {
         byte nextRot = (curRot + 1) % 4;
@@ -327,7 +324,6 @@ namespace TetrisGame {
       }
     }
 
-    // 3. Pergerakan Turun Otomatis (Lebih sabar di awal, 10 level: 0 s/d 9)
     byte level = getLevel();
     unsigned int currentDropInterval = 520 - (level * 30);
 

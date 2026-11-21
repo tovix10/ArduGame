@@ -22,7 +22,7 @@ namespace InvadersGame {
     bool powActive;
     int score;
     byte lives;
-    byte level; // 0 s/d 9 (10 Level)
+    byte level;
     bool isGameOver;
     bool animFrame;
   };
@@ -30,25 +30,49 @@ namespace InvadersGame {
   InvadersState* st = (InvadersState*)WormGame::worm;
   const byte shipY = 85;
 
-  void drawHeader() {
-    tv.draw_rect(3, 1, 122, 9, 0, 0);
+  void updateScoreLevelHud() {
+    tv.draw_rect(4, 2, 21, 7, 0, 0);
     drawDigit(5, 2, (st->score / 100) % 10);
     drawDigit(12, 2, (st->score / 10) % 10);
     drawDigit(19, 2, st->score % 10);
 
-    // Level L0 s/d L9 (10 Level)
-    tv.draw_line(52, 2, 52, 8, 1);
-    tv.draw_line(52, 8, 56, 8, 1);
+    tv.draw_rect(58, 2, 6, 7, 0, 0);
     drawDigit(59, 2, st->level);
+  }
 
+  void updateWeaponHud() {
+    tv.draw_rect(78, 2, 13, 6, 0, 0);
     tv.draw_rect(78, 2, 13, 6, 1);
     for (byte w = 0; w < st->weaponLvl; w++) {
       tv.draw_line(81 + (w * 3), 4, 81 + (w * 3), 6, 1);
     }
+  }
 
+  void updateLivesHud() {
+    tv.draw_rect(98, 2, 25, 6, 0, 0);
     for (byte i = 0; i < st->lives; i++) {
       tv.draw_rect(118 - (i * 6), 3, 3, 3, 1, 1);
     }
+  }
+
+  void drawHeader() {
+    tv.draw_rect(3, 1, 122, 9, 0, 0);
+    tv.draw_line(52, 2, 52, 8, 1);
+    tv.draw_line(52, 8, 56, 8, 1);
+    updateScoreLevelHud();
+    updateWeaponHud();
+    updateLivesHud();
+  }
+
+  void syncLevelFromScore() {
+    byte newLvl = st->score / 20;
+    if (newLvl > 9) newLvl = 9;
+    if (newLvl != st->level) {
+      st->level = newLvl;
+      st->moveSpeed = (st->level >= 8) ? 3 : (10 - (st->level / 2));
+      playLevelUpSound();
+    }
+    updateScoreLevelHud();
   }
 
   void drawShip(byte x, byte y, byte color) {
@@ -61,19 +85,23 @@ namespace InvadersGame {
     tv.draw_line(x, y + 4, x + 10, y + 4, color);
     tv.draw_line(x + 2, y + 5, x + 4, y + 5, color);
     tv.draw_line(x + 6, y + 5, x + 8, y + 5, color);
-    if (color == 1 && st->animFrame) {
-      tv.set_pixel(x + 3, y + 6, 1);
-      tv.set_pixel(x + 7, y + 6, 1);
-    } else {
-      tv.set_pixel(x + 3, y + 6, 0);
-      tv.set_pixel(x + 7, y + 6, 0);
-    }
+    byte fCol = (color == 1 && st->animFrame) ? 1 : 0;
+    tv.set_pixel(x + 3, y + 6, fCol);
+    tv.set_pixel(x + 7, y + 6, fCol);
   }
 
-  void drawAlienSprite(int8_t x, int8_t y, byte color, bool frame, byte row) {
-    if (y < 12 || y > 88 || x < 4 || x > 116) return;
+  int8_t getAlienY(byte r, byte c) {
+    int8_t wave = ((st->level >= 3) && (st->level % 2 == 1) && (c & 1)) ? 2 : 0;
+    return st->formY + (r * 8) + wave;
+  }
+
+ void drawAlienSprite(int8_t x, int8_t y, byte color, bool frame, byte row) {
+    if (y < 12 || y > 90 || x < 3 || x > 117) return;
     if (color == 0) {
-      tv.draw_rect(x, y, 6, 4, 0, 0);
+      // Sapu area kaki (y+3) dan sayap/kepala dengan batas aman agar tidak ada jejak
+      int8_t rx = (x > 4) ? (x - 1) : 4;
+      int8_t ry = (y > 12) ? (y - 1) : 12;
+      tv.draw_rect(rx, ry, 9, 6, 0, 0);
       return;
     }
     if (row == 0) {
@@ -99,31 +127,38 @@ namespace InvadersGame {
     for (byte r = 0; r < 3; r++) {
       for (byte c = 0; c < 6; c++) {
         if (st->aliens[r] & (1 << c)) {
-          int8_t waveOffset = ((st->level >= 2) && (st->level % 2 == 0) && (c & 1)) ? 2 : 0;
-          int8_t ax = st->formX + (c * 14);
-          int8_t ay = st->formY + (r * 8) + waveOffset;
-          drawAlienSprite(ax, ay, color, st->animFrame, r);
+          drawAlienSprite(st->formX + (c * 14), getAlienY(r, c), color, st->animFrame, r);
         }
       }
     }
   }
 
+  void drawBullet(byte b, byte color) {
+    byte w = st->bulWep[b];
+    int8_t x = st->bulX[b];
+    int8_t y = st->bulY[b];
+    if (y < 12 || y > 91) return;
+    if (w == 1 || w == 3) tv.draw_line(x + 5, y, x + 5, y + 2, color);
+    if (w >= 2) {
+      tv.draw_line(x, y, x, y + 2, color);
+      tv.draw_line(x + 10, y, x + 10, y + 2, color);
+    }
+  }
+
   void initWave() {
     for (byte r = 0; r < 3; r++) {
-      if (st->level == 1 && r == 1) st->aliens[r] = 0x33;
-      else st->aliens[r] = 0x3F;
+      st->aliens[r] = (st->level == 1 && r == 1) ? 0x33 : 0x3F;
     }
     st->formX = 16;
-    st->formY = 14 + (st->level / 2);
-    st->formDir = 1; // Geser halus 1px per langkah agar tidak terlalu liar
+    st->formY = 14 + (st->level / 3);
+    st->formDir = 1;
     st->moveTick = 0;
     st->swayStep = 0;
-    // Level 0 (pertama): sangat pelan (moveSpeed = 9), makin cepat perlahan di level tinggi
-    st->moveSpeed = (st->level >= 7) ? 2 : (9 - st->level);
+    st->moveSpeed = (st->level >= 8) ? 3 : (10 - (st->level / 2));
     st->diveActive = false;
     st->powActive = false;
-    st->eBulY = -1;
     for (byte b = 0; b < 3; b++) st->bulY[b] = -1;
+    st->eBulY = -1;
     drawFormation(1);
     drawHeader();
   }
@@ -138,30 +173,12 @@ namespace InvadersGame {
     st->isGameOver = false;
     st->animFrame = false;
 
-    tv.draw_line(2, 11, 125, 11, 1);
-    tv.draw_line(2, 11, 2, 94, 1);
-    tv.draw_line(125, 11, 125, 94, 1);
-    tv.draw_line(2, 94, 125, 94, 1);
-
+    tv.draw_rect(2, 11, 123, 83, 1);
     initWave();
     drawShip(st->shipX, shipY, 1);
   }
 
-  void drawBullet(byte b, byte color) {
-    byte w = st->bulWep[b];
-    int8_t x = st->bulX[b];
-    int8_t y = st->bulY[b];
-    if (w == 1 || w == 3) {
-      tv.draw_line(x + 5, y, x + 5, y + 2, color);
-    }
-    if (w >= 2) {
-      tv.draw_line(x, y, x, y + 2, color);
-      tv.draw_line(x + 10, y, x + 10, y + 2, color);
-    }
-  }
-
   bool checkHitAt(int8_t bx, int8_t by) {
-    // 1. Cek Alien Kamikaze (+3 Poin)
     if (st->diveActive && bx >= st->diveX - 1 && bx <= st->diveX + 7 &&
         by >= st->diveY && by <= st->diveY + 5) {
       drawAlienSprite(st->diveX, st->diveY, 0, false, 0);
@@ -174,28 +191,26 @@ namespace InvadersGame {
         st->powX = st->diveX + 2;
         st->powY = st->diveY;
       }
-      drawHeader();
+      syncLevelFromScore();
       return true;
     }
 
-    // 2. Cek Barisan Alien (+1 Poin per alien!)
     for (byte r = 0; r < 3; r++) {
       for (byte c = 0; c < 6; c++) {
         if (st->aliens[r] & (1 << c)) {
-          int8_t waveOffset = ((st->level >= 2) && (st->level % 2 == 0) && (c & 1)) ? 2 : 0;
           int8_t ax = st->formX + (c * 14);
-          int8_t ay = st->formY + (r * 8) + waveOffset;
+          int8_t ay = getAlienY(r, c);
           if (bx >= ax && bx <= ax + 6 && by >= ay && by <= ay + 4) {
             st->aliens[r] &= ~(1 << c);
             drawAlienSprite(ax, ay, 0, false, r);
             if (st->score < 999) st->score += 1;
             playTone(450, 15);
-            if (!st->powActive && st->weaponLvl < 3 && random(0, 5) == 0) {
+            if (!st->powActive && st->weaponLvl < 3 && random(0, 6) == 0) {
               st->powActive = true;
               st->powX = ax + 2;
               st->powY = ay;
             }
-            drawHeader();
+            syncLevelFromScore();
             return true;
           }
         }
@@ -207,9 +222,12 @@ namespace InvadersGame {
   void playerHit() {
     drawShip(st->shipX, shipY, 0);
     if (st->eBulY >= 0) { tv.draw_line(st->eBulX, st->eBulY, st->eBulX, st->eBulY + 2, 0); st->eBulY = -1; }
-    if (st->weaponLvl > 1) st->weaponLvl--;
+    if (st->weaponLvl > 1) {
+      st->weaponLvl--;
+      updateWeaponHud();
+    }
     st->lives--;
-    drawHeader();
+    updateLivesHud();
     playTone(150, 250);
     if (st->lives == 0) {
       st->isGameOver = true;
@@ -278,7 +296,7 @@ namespace InvadersGame {
 
     if (st->eBulY >= 0) {
       tv.draw_line(st->eBulX, st->eBulY, st->eBulX, st->eBulY + 2, 0);
-      st->eBulY += (st->level >= 5) ? 3 : 2;
+      st->eBulY += (st->level >= 6) ? 3 : 2;
       if (st->eBulY >= shipY && st->eBulY <= shipY + 5 &&
           st->eBulX >= st->shipX && st->eBulX <= st->shipX + 10) {
         st->eBulY = -1;
@@ -297,11 +315,14 @@ namespace InvadersGame {
       if (st->powY >= shipY - 2 && st->powY <= shipY + 5 &&
           st->powX + 4 >= st->shipX && st->powX <= st->shipX + 10) {
         st->powActive = false;
-        if (st->weaponLvl < 3) st->weaponLvl++;
+        if (st->weaponLvl < 3) {
+          st->weaponLvl++;
+          updateWeaponHud();
+        }
         st->score += 2;
         if (st->score > 999) st->score = 999;
         playTone(1350, 50);
-        drawHeader();
+        syncLevelFromScore();
       } else if (st->powY > 88) {
         st->powActive = false;
       } else {
@@ -319,34 +340,29 @@ namespace InvadersGame {
       st->formX += st->formDir;
       st->swayStep++;
 
-      // Gerakan mengayun naik-turun baru muncul mulai Level 3 ke atas
-      if (st->level >= 3 && (st->swayStep % 6 == 0)) {
-        st->formY += (st->swayStep & 6) ? 1 : -1;
+      if (st->level >= 4 && (st->swayStep % 8 == 0)) {
+        st->formY += (st->swayStep & 8) ? 1 : -1;
       }
 
       if (st->formX <= 6 || st->formX >= 42) {
         st->formDir = -st->formDir;
-        st->formY += 2; // Turun pelan 2px saat mentok pinggir
+        st->formY += 2;
       }
 
       drawFormation(1);
 
-      // Kurva kesulitan bertahap:
-      // Level 0 (Pertama): Tidak ada tembakan musuh & tidak ada kamikaze
-      // Level 1 - 2: Alien mulai menembak pelan, kamikaze belum ada
-      // Level 3 ke atas: Kamikaze mulai muncul bertahap
       if (st->level >= 1) {
         for (int8_t r = 2; r >= 0; r--) {
           byte c = random(0, 6);
           if (st->aliens[r] & (1 << c)) {
             int8_t ax = st->formX + (c * 14);
-            int8_t ay = st->formY + (r * 8);
-            if (st->eBulY < 0 && random(0, 12) < st->level) {
+            int8_t ay = getAlienY(r, c);
+            if (st->eBulY < 0 && random(0, 16) < st->level) {
               st->eBulX = ax + 3;
               st->eBulY = ay + 5;
               playTone(220, 10);
             }
-            if (st->level >= 3 && !st->diveActive && random(0, 14) < (st->level - 2)) {
+            if (st->level >= 3 && !st->diveActive && random(0, 18) < (st->level - 2)) {
               st->aliens[r] &= ~(1 << c);
               drawAlienSprite(ax, ay, 0, false, r);
               st->diveActive = true;
@@ -371,14 +387,10 @@ namespace InvadersGame {
 
     if (st->diveActive) {
       drawAlienSprite(st->diveX, st->diveY, 0, false, 0);
-      st->diveY += (st->level >= 6) ? 3 : 2;
+      st->diveY += (st->level >= 7) ? 3 : 2;
       st->diveX += st->diveDx;
-      if (st->diveX <= 6 || st->diveX >= 114 || random(0, 8) == 0) {
+      if (st->diveX <= 6 || st->diveX >= 114 || random(0, 10) == 0) {
         st->diveDx = (st->shipX > st->diveX) ? 1 : -1;
-      }
-      if (st->level >= 5 && st->eBulY < 0 && st->diveY > 30 && st->diveY < 55) {
-        st->eBulX = st->diveX + 3;
-        st->eBulY = st->diveY + 5;
       }
 
       if (st->diveY + 4 >= shipY && st->diveY <= shipY + 5 &&
@@ -393,13 +405,16 @@ namespace InvadersGame {
       }
     }
 
+    // Bersihkan seluruh peluru saat ganti gelombang agar tidak menyisakan titik saat X ditahan
     if (st->aliens[0] == 0 && st->aliens[1] == 0 && st->aliens[2] == 0 && !st->diveActive) {
       if (st->powActive) { tv.draw_rect(st->powX, st->powY, 4, 4, 0, 0); st->powActive = false; }
+      for (byte b = 0; b < 3; b++) {
+        if (st->bulY[b] >= 0) { drawBullet(b, 0); st->bulY[b] = -1; }
+      }
       if (st->eBulY >= 0) { tv.draw_line(st->eBulX, st->eBulY, st->eBulX, st->eBulY + 2, 0); st->eBulY = -1; }
       playLevelUpSound();
       tv.delay(400);
-      st->level++;
-      if (st->level > 9) st->level = 9;
+      if (st->level < 9) st->level++;
       initWave();
     }
 

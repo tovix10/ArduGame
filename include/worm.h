@@ -10,7 +10,8 @@ namespace WormGame {
   #define FRAME_X1 123
   #define FRAME_Y1 92
   #define MAX_SEGMENTS 100
-  #define FOOD_COUNT 3
+  #define NORMAL_FOOD 3
+  #define MAX_FOOD 5
 
   struct Segment {
     byte x;
@@ -20,19 +21,22 @@ namespace WormGame {
   Segment worm[MAX_SEGMENTS];
   byte currentSegments = 6;
   byte currentDirection = RIGHT;
-  byte foodX[FOOD_COUNT];
-  byte foodY[FOOD_COUNT];
+  byte foodX[MAX_FOOD];
+  byte foodY[MAX_FOOD];
   byte bonusX = 0, bonusY = 0;
   byte bonusSpawnTimer = 0;
-  byte ghostTimer = 0;
+  byte bodyGhostTimer = 0;
   int currentScore = 0;
   boolean isGameOver = false;
   bool blinkToggle = false;
 
-  // 10 Tingkatan Level (L0 s/d L9), naik sangat sabar setiap 25 poin (25 makanan)
   byte getLevel() {
     byte lvl = currentScore / 25;
     return (lvl > 9) ? 9 : lvl;
+  }
+
+  byte activeFoodCount() {
+    return (bodyGhostTimer > 0) ? MAX_FOOD : NORMAL_FOOD;
   }
 
   void growWorm(byte addCount) {
@@ -52,14 +56,13 @@ namespace WormGame {
     drawDigit(13, 3, (currentScore / 10) % 10);
     drawDigit(20, 3, currentScore % 10);
 
-    // Indikator Level L0 s/d L9 (10 Level)
     tv.draw_line(44, 3, 44, 9, 1);
     tv.draw_line(44, 9, 48, 9, 1);
     drawDigit(51, 3, getLevel());
 
-    if (ghostTimer > 0) {
+    if (bodyGhostTimer > 0) {
       tv.draw_rect(70, 3, 50, 6, 1);
-      byte barW = (ghostTimer > 48) ? 48 : ghostTimer;
+      byte barW = (bodyGhostTimer > 48) ? 48 : bodyGhostTimer;
       tv.draw_rect(71, 4, barW, 4, 1, 1);
     }
   }
@@ -74,7 +77,8 @@ namespace WormGame {
   }
 
   void drawFoods() {
-    for (byte i = 0; i < FOOD_COUNT; i++) {
+    byte count = activeFoodCount();
+    for (byte i = 0; i < count; i++) {
       tv.draw_rect(foodX[i], foodY[i], 1, 1, 1, 1);
       tv.set_pixel(foodX[i] + 1, foodY[i] - 1, 1);
     }
@@ -130,14 +134,14 @@ namespace WormGame {
     currentSegments = 6;
     currentDirection = RIGHT;
     bonusSpawnTimer = 0;
-    ghostTimer = 0;
+    bodyGhostTimer = 0;
 
     for (byte i = 0; i < currentSegments; i++) {
       worm[i].x = 40 - (i * 2);
       worm[i].y = 50;
     }
 
-    for (byte i = 0; i < FOOD_COUNT; i++) {
+    for (byte i = 0; i < MAX_FOOD; i++) {
       spawnFood(i);
     }
 
@@ -148,7 +152,7 @@ namespace WormGame {
   }
 
   boolean checkForTailBite() {
-    if (ghostTimer > 0) return false;
+    if (bodyGhostTimer > 0) return false;
     for (byte i = 1; i < currentSegments; i++) {
       if (abs((int)worm[0].x - (int)worm[i].x) < 2 &&
           abs((int)worm[0].y - (int)worm[i].y) < 2) {
@@ -182,23 +186,18 @@ namespace WormGame {
     else if (currentDirection == LEFT) nextX -= 2;
     else if (currentDirection == RIGHT) nextX += 2;
 
-    if (nextX >= FRAME_X1 - 2 || nextX <= FRAME_X0 + 1 ||
-        nextY >= FRAME_Y1 - 2 || nextY <= FRAME_Y0 + 1) {
-      if (ghostTimer > 0) {
-        if (nextX >= FRAME_X1 - 2) nextX = FRAME_X0 + 2;
-        else if (nextX <= FRAME_X0 + 1) nextX = FRAME_X1 - 4;
-        if (nextY >= FRAME_Y1 - 2) nextY = FRAME_Y0 + 2;
-        else if (nextY <= FRAME_Y0 + 1) nextY = FRAME_Y1 - 4;
-        drawFrame();
-        playTone(600, 10);
-      } else {
-        triggerGameOver();
-        return;
-      }
+    bool wrapped = false;
+    if (nextX >= FRAME_X1 - 2) { nextX = FRAME_X0 + 2; wrapped = true; }
+    else if (nextX <= FRAME_X0 + 1) { nextX = FRAME_X1 - 4; wrapped = true; }
+    if (nextY >= FRAME_Y1 - 2) { nextY = FRAME_Y0 + 2; wrapped = true; }
+    else if (nextY <= FRAME_Y0 + 1) { nextY = FRAME_Y1 - 4; wrapped = true; }
+    if (wrapped) {
+      drawFrame();
+      playTone(550, 8);
     }
 
-    // 1. Makan Makanan Biasa: +1 Poin & +2 Segmen
-    for (byte i = 0; i < FOOD_COUNT; i++) {
+    byte count = activeFoodCount();
+    for (byte i = 0; i < count; i++) {
       if (abs(nextX - (int)foodX[i]) <= 2 && abs(nextY - (int)foodY[i]) <= 2) {
         tv.draw_rect(foodX[i] - 1, foodY[i] - 1, 3, 3, 0, 0);
         byte oldLvl = getLevel();
@@ -209,28 +208,25 @@ namespace WormGame {
         if (currentScore < 999) currentScore += 1;
         spawnFood(i);
 
-        if (getLevel() > oldLvl) {
-          playLevelUpSound();
-        } else {
-          playTone(1046, 15);
-        }
+        if (getLevel() > oldLvl) playLevelUpSound();
+        else playTone(1046, 15);
 
         drawHeader();
 
-        if (bonusSpawnTimer == 0 && (currentScore % 10 == 0)) {
+        if (bonusSpawnTimer == 0 && bodyGhostTimer == 0 && (currentScore % 10 == 0)) {
           bonusX = (random((FRAME_X0 + 6) / 2, (FRAME_X1 - 8) / 2)) * 2;
           bonusY = (random((FRAME_Y0 + 6) / 2, (FRAME_Y1 - 8) / 2)) * 2;
-          bonusSpawnTimer = 65;
+          bonusSpawnTimer = 70;
         }
         return;
       }
     }
 
-    // 2. Makan Bonus Bintang: +3 Poin & +3 Segmen
     if (bonusSpawnTimer > 0 && abs(nextX - (int)bonusX) <= 3 && abs(nextY - (int)bonusY) <= 3) {
       drawBonusFood(0);
       bonusSpawnTimer = 0;
-      ghostTimer = 85;
+      bodyGhostTimer = 85;
+      for (byte i = NORMAL_FOOD; i < MAX_FOOD; i++) spawnFood(i);
       growWorm(3);
       currentScore += 3;
       if (currentScore > 999) currentScore = 999;
@@ -266,7 +262,6 @@ namespace WormGame {
 
     if (checkGlobalPause()) return;
 
-    // Kurva kecepatan halus untuk 10 tingkatan (L0 s/d L9)
     byte lvl = getLevel();
     byte pollLoops = (lvl <= 4) ? (8 - lvl) : ((lvl <= 7) ? 3 : 2);
     byte stepDelay = (lvl <= 7) ? 16 : (22 - lvl);
@@ -284,9 +279,7 @@ namespace WormGame {
 
       tv.delay(stepDelay);
 
-      if (isPS2Pressed(PS2_BTN_CROSS)) {
-        break;
-      }
+      if (isPS2Pressed(PS2_BTN_CROSS)) break;
     }
 
     currentDirection = nextDir;
@@ -297,9 +290,17 @@ namespace WormGame {
       bonusSpawnTimer--;
       if (bonusSpawnTimer > 0) drawBonusFood(1);
     }
-    if (ghostTimer > 0) {
-      ghostTimer--;
-      if (ghostTimer % 2 == 0 || ghostTimer == 0) drawHeader();
+
+    if (bodyGhostTimer > 0) {
+      bodyGhostTimer--;
+      if (bodyGhostTimer == 0) {
+        for (byte i = NORMAL_FOOD; i < MAX_FOOD; i++) {
+          tv.draw_rect(foodX[i] - 1, foodY[i] - 1, 3, 3, 0, 0);
+        }
+        drawHeader();
+      } else if (bodyGhostTimer % 2 == 0) {
+        drawHeader();
+      }
     }
 
     eraseTail();
@@ -307,7 +308,6 @@ namespace WormGame {
     if (!isGameOver) {
       drawFoods();
       drawWorm();
-      if (ghostTimer > 0) drawFrame();
     }
   }
 

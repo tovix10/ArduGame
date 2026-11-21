@@ -95,7 +95,6 @@ const uint16_t menuMelodyNotes[MENU_MELODY_LEN] PROGMEM = {
 };
 
 const uint8_t menuMelodyDurs[MENU_MELODY_LEN] PROGMEM = {
-  // Durasi nada santai dengan aksen tahan di tiap akhir frase
   85, 85, 95, 160, 90, 150, 95, 180,
   85, 85, 95, 160, 85, 150, 95, 190,
   80, 80, 90, 155, 90, 90,  90, 180,
@@ -166,9 +165,9 @@ void drawBatteryIcon(bool blinkState) {
   int adc = analogRead(A1);
   byte bars = 0;
   // Kalibrasi berdasarkan tegangan di pin A1 (setelah saklar, Vref = 5.17V):
-  if (adc > 800) bars = 3;      // Sekitar >= 4.04V di A1
-  else if (adc > 715) bars = 2; // Sekitar 3.61V - 4.04V di A1
-  else if (adc > 633) bars = 1; // Sekitar 3.20V - 3.61V di A1
+  if (adc > 800) bars = 3;
+  else if (adc > 715) bars = 2;
+  else if (adc > 633) bars = 1;
 
   tv.draw_rect(100, 8, 15, 7, 0, 0);
 
@@ -214,31 +213,33 @@ void drawGameOverBox() {
   tv.draw_line(x + 30, y + 4, x + 33, y + 8, 1);
 }
 
-// --- FUNGSI GLOBAL PAUSE (SIMPAN & PULIHKAN LAYAR OTOMATIS) ---
+// --- FUNGSI GLOBAL PAUSE (0 BYTE RAM MENGGUNAKAN MODE INVERT) ---
+void togglePauseOverlay() {
+  tv.draw_rect(40, 40, 47, 15, INVERT);
+  byte x = 46, y = 44;
+  // P
+  tv.draw_line(x, y, x, y + 7, INVERT); tv.draw_rect(x, y, 4, 3, INVERT);
+  // A
+  tv.draw_line(x + 7, y + 7, x + 7, y, INVERT); tv.draw_line(x + 7, y, x + 11, y, INVERT);
+  tv.draw_line(x + 11, y, x + 11, y + 7, INVERT); tv.draw_line(x + 7, y + 3, x + 11, y + 3, INVERT);
+  // U
+  tv.draw_line(x + 14, y, x + 14, y + 7, INVERT); tv.draw_line(x + 18, y, x + 18, y + 7, INVERT);
+  tv.draw_line(x + 14, y + 7, x + 18, y + 7, INVERT);
+  // S
+  tv.draw_line(x + 21, y, x + 25, y, INVERT); tv.draw_line(x + 21, y, x + 21, y + 3, INVERT);
+  tv.draw_line(x + 21, y + 3, x + 25, y + 3, INVERT); tv.draw_line(x + 25, y + 3, x + 25, y + 7, INVERT);
+  tv.draw_line(x + 21, y + 7, x + 25, y + 7, INVERT);
+  // E
+  tv.draw_line(x + 28, y, x + 28, y + 7, INVERT); tv.draw_line(x + 28, y, x + 32, y, INVERT);
+  tv.draw_line(x + 28, y + 3, x + 31, y + 3, INVERT); tv.draw_line(x + 28, y + 7, x + 32, y + 7, INVERT);
+}
+
 bool checkGlobalPause() {
   if (isPS2Pressed(PS2_BTN_START)) {
     isPaused = true;
     playTone(900, 30); tv.delay(40); playTone(1200, 40);
 
-    byte backup[96];
-    for (byte r = 0; r < 16; r++) {
-      for (byte c = 0; c < 6; c++) {
-        backup[r * 6 + c] = tv.screen[(40 + r) * 16 + (5 + c)];
-      }
-    }
-
-    tv.draw_rect(40, 40, 47, 15, 1, 0);
-    byte x = 46, y = 44;
-    tv.draw_line(x, y, x, y + 7, 1); tv.draw_rect(x, y, 4, 3, 1);
-    tv.draw_line(x + 7, y + 7, x + 7, y, 1); tv.draw_line(x + 7, y, x + 11, y, 1);
-    tv.draw_line(x + 11, y, x + 11, y + 7, 1); tv.draw_line(x + 7, y + 3, x + 11, y + 3, 1);
-    tv.draw_line(x + 14, y, x + 14, y + 7, 1); tv.draw_line(x + 18, y, x + 18, y + 7, 1);
-    tv.draw_line(x + 14, y + 7, x + 18, y + 7, 1);
-    tv.draw_line(x + 21, y, x + 25, y, 1); tv.draw_line(x + 21, y, x + 21, y + 3, 1);
-    tv.draw_line(x + 21, y + 3, x + 25, y + 3, 1); tv.draw_line(x + 25, y + 3, x + 25, y + 7, 1);
-    tv.draw_line(x + 21, y + 7, x + 25, y + 7, 1);
-    tv.draw_line(x + 28, y, x + 28, y + 7, 1); tv.draw_line(x + 28, y, x + 32, y, 1);
-    tv.draw_line(x + 28, y + 3, x + 31, y + 3, 1); tv.draw_line(x + 28, y + 7, x + 32, y + 7, 1);
+    togglePauseOverlay();
 
     while (isPS2Pressed(PS2_BTN_START)) { tv.delay(16); readPS2(); }
 
@@ -257,11 +258,7 @@ bool checkGlobalPause() {
       }
     }
 
-    for (byte r = 0; r < 16; r++) {
-      for (byte c = 0; c < 6; c++) {
-        tv.screen[(40 + r) * 16 + (5 + c)] = backup[r * 6 + c];
-      }
-    }
+    togglePauseOverlay();
   }
   return false;
 }
@@ -489,20 +486,35 @@ void showMainMenu() {
   unsigned long lastMenuNoteMs = 0;
   unsigned int nextMenuWaitMs = 200;
 
+  auto tickMenuMelody = [&]() {
+    unsigned long nowMs = millis();
+    if (nowMs - lastMenuNoteMs >= nextMenuWaitMs) {
+      uint16_t mFreq = pgm_read_word(&menuMelodyNotes[menuNoteIdx]);
+      uint8_t  mDur  = pgm_read_byte(&menuMelodyDurs[menuNoteIdx]);
+      playTone(mFreq, mDur);
+      lastMenuNoteMs = nowMs;
+      menuNoteIdx++;
+      if (menuNoteIdx >= MENU_MELODY_LEN) {
+        menuNoteIdx = 0;
+        nextMenuWaitMs = mDur + 420;
+      } else if ((menuNoteIdx & 0x07) == 0) {
+        nextMenuWaitMs = mDur + 190;
+      } else {
+        nextMenuWaitMs = mDur + 70;
+      }
+    }
+  };
+
   tv.fill(0);
-  // Bingkai Ganda Konsol Arcade
   tv.draw_rect(4, 3, 120, 90, 1);
   tv.draw_rect(6, 5, 116, 86, 1);
   tv.draw_line(6, 17, 122, 17, 1);
 
-  // Header "HAFIZ 7" di Atas Menu
   drawWordHAFIZ(44, 8, false);
   drawDigit(80, 8, 7);
 
-  // Tampilkan Ikon Baterai Pertama Kali (Khusus di Menu)
   drawBatteryIcon(true);
 
-  // Jalur Scrollbar di Sisi Kanan
   tv.draw_line(116, 20, 116, 62, 1);
 
   bool redrawMenu = true;
@@ -522,14 +534,12 @@ void showMainMenu() {
       redrawMenu = false;
     }
 
-    // Update Scrollbar & Ikon Preview sesuai pilihan kursor
     tv.draw_rect(115, 20, 3, 43, 0, 0);
     tv.draw_line(116, 20, 116, 62, 1);
     byte barY = 20 + (selected * 6);
     tv.draw_rect(115, barY, 3, 6, 1, 1);
     drawGamePreviewIcon(selected);
 
-    // Animasi Kursor Panah Segitiga
     animTick++;
     byte arrowShift = (animTick / 6) % 2;
 
@@ -542,30 +552,13 @@ void showMainMenu() {
     tv.draw_line(cx + 2, cy + 2, cx + 2, cy + 4, 1);
     tv.set_pixel(cx + 3, cy + 3, 1);
 
-    // Ornamen lampu berkedip di kiri nama HAFIZ & Sensor Baterai di kanan
     byte starColor = (animTick / 8) % 2;
     tv.draw_rect(22, 10, 3, 3, starColor, starColor);
     if (animTick % 24 == 0) {
       drawBatteryIcon(starColor);
     }
 
-    // Pemutar Gabungan 4 Melodi Menu (Tempo santai & jeda antar frase jelas)
-    unsigned long nowMs = millis();
-    if (nowMs - lastMenuNoteMs >= nextMenuWaitMs) {
-      uint16_t mFreq = pgm_read_word(&menuMelodyNotes[menuNoteIdx]);
-      uint8_t  mDur  = pgm_read_byte(&menuMelodyDurs[menuNoteIdx]);
-      playTone(mFreq, mDur);
-      lastMenuNoteMs = nowMs;
-      menuNoteIdx++;
-      if (menuNoteIdx >= MENU_MELODY_LEN) {
-        menuNoteIdx = 0;
-        nextMenuWaitMs = mDur + 420; // Jeda sebelum mengulang seluruh rangkaian
-      } else if ((menuNoteIdx & 0x07) == 0) {
-        nextMenuWaitMs = mDur + 190; // Jeda napas setiap selesai 1 frase (8 nada)
-      } else {
-        nextMenuWaitMs = mDur + 70;  // Jeda antar nada di dalam frase
-      }
-    }
+    tickMenuMelody();
 
     tv.delay(20);
     readPS2();
@@ -577,11 +570,12 @@ void showMainMenu() {
           scrollOffset = selected;
           redrawMenu = true;
         }
-        playTone(800, 15);
-        lastMenuNoteMs = millis();
-        nextMenuWaitMs = 140;
       }
-      while (isPS2Pressed(PS2_BTN_UP)) { tv.delay(16); readPS2(); }
+      while (isPS2Pressed(PS2_BTN_UP)) {
+        tickMenuMelody();
+        tv.delay(16);
+        readPS2();
+      }
     } else if (isPS2Pressed(PS2_BTN_DOWN)) {
       if (selected < totalGames - 1) {
         selected++;
@@ -589,11 +583,12 @@ void showMainMenu() {
           scrollOffset = selected - visibleRows + 1;
           redrawMenu = true;
         }
-        playTone(800, 15);
-        lastMenuNoteMs = millis();
-        nextMenuWaitMs = 140;
       }
-      while (isPS2Pressed(PS2_BTN_DOWN)) { tv.delay(16); readPS2(); }
+      while (isPS2Pressed(PS2_BTN_DOWN)) {
+        tickMenuMelody();
+        tv.delay(16);
+        readPS2();
+      }
     } else if (isPS2Pressed(PS2_BTN_START) || isPS2Pressed(PS2_BTN_CROSS)) {
       playGameJingle(selected);
       while (isPS2Pressed(PS2_BTN_START) || isPS2Pressed(PS2_BTN_CROSS)) {

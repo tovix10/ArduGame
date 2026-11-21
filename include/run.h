@@ -16,7 +16,7 @@ namespace RunGame {
     byte groundOffset;
     int score;
     byte lives;
-    byte level; // 0 s/d 9 (10 Level)
+    byte level;
     bool isGameOver;
     bool animFrame;
   };
@@ -49,10 +49,18 @@ namespace RunGame {
     updateLives();
   }
 
+  // Pegunungan tipis & burung kecil di langit
+  /* void drawMountains() {
+    tv.draw_line(8, groundY - 1, 30, groundY - 11, 1);
+    tv.draw_line(30, groundY - 11, 54, groundY - 1, 1);
+    tv.draw_line(58, groundY - 1, 84, groundY - 14, 1);
+    tv.draw_line(84, groundY - 14, 118, groundY - 1, 1);
+  } */
+
   void drawClouds(byte color) {
     for (byte i = 0; i < 2; i++) {
       byte cx = st->cloudX[i];
-      byte cy = (i == 0) ? 20 : 28;
+      byte cy = (i == 0) ? 18 : 26;
       tv.draw_line(cx, cy, cx + 8, cy, color);
       tv.draw_line(cx + 2, cy - 2, cx + 6, cy - 2, color);
       tv.draw_line(cx + 1, cy - 1, cx + 7, cy - 1, color);
@@ -60,10 +68,12 @@ namespace RunGame {
   }
 
   void drawStaticSky() {
-    tv.draw_circle(108, 22, 4, 1);
-    tv.set_pixel(106, 21, 1);
-    tv.set_pixel(45, 16, 1);
-    tv.set_pixel(88, 18, 1);
+    tv.draw_circle(112, 20, 3, 1);
+    tv.set_pixel(52, 15, 1);
+    tv.set_pixel(94, 16, 1);
+    // Burung kecil tipis di langit
+    tv.set_pixel(35, 20, 1); tv.set_pixel(36, 19, 1); tv.set_pixel(37, 20, 1); tv.set_pixel(38, 19, 1); tv.set_pixel(39, 20, 1);
+    // drawMountains();
   }
 
   void drawGround() {
@@ -138,12 +148,7 @@ namespace RunGame {
 
   void spawnNextObstacle() {
     st->obsX = 115;
-    // Di Level 0 hanya kaktus agar pemanasan santai; burung muncul mulai Level 1 ke atas
-    if (st->level == 0) {
-      st->obsType = random(0, 2);
-    } else {
-      st->obsType = random(0, 3);
-    }
+    st->obsType = (st->level == 0) ? random(0, 2) : random(0, 3);
   }
 
   void init() {
@@ -155,8 +160,8 @@ namespace RunGame {
     st->vy = 0;
     st->isJumping = false;
     st->isDucking = false;
-    st->cloudX[0] = 25;
-    st->cloudX[1] = 75;
+    st->cloudX[0] = 20;
+    st->cloudX[1] = 70;
     st->groundOffset = 0;
     st->isGameOver = false;
     st->animFrame = false;
@@ -226,13 +231,12 @@ namespace RunGame {
 
     drawObstacle(st->obsX, st->obsType, 0);
 
-    // Kecepatan bertahap di 10 Level (L0-L3 = 2px, L4-L7 = 3px, L8-L9 = 4px)
     byte speed = (st->level < 4) ? 2 : ((st->level < 8) ? 3 : 4);
     st->obsX -= speed;
 
     if (st->obsX < 5) {
-      if (st->score < 999) st->score += 1; // +1 Poin per rintangan!
-      byte newLvl = st->score / 25;        // Naik level tiap 25 rintangan (L0 s/d L9)
+      if (st->score < 999) st->score += 1;
+      byte newLvl = st->score / 25;
       if (newLvl > 9) newLvl = 9;
       if (newLvl != st->level) {
         st->level = newLvl;
